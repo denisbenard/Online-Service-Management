@@ -1,0 +1,74 @@
+type ReviewPayload = record {
+  userId : text;
+  comment : text;
+  rating : float64;
+  serviceId : text;
+};
+type ReviewRecord = record {
+  id : text;
+  userId : text;
+  createdAt : nat64;
+  comment : text;
+  rating : float64;
+  serviceId : text;
+};
+type ServicePayload = record {
+  startTime : text;
+  provider : text;
+  endTime : text;
+  date : text;
+  name : text;
+  description : text;
+  category : text;
+  location : text;
+};
+type ServiceRecord = record {
+  id : text;
+  startTime : text;
+  provider : text;
+  endTime : text;
+  date : text;
+  name : text;
+  createdAt : nat64;
+  description : text;
+  updatedAt : opt nat64;
+  category : text;
+  location : text;
+};
+type User = record {
+  id : text;
+  username : text;
+  createdAt : nat64;
+  email : text;
+  updatedAt : opt nat64;
+};
+type UserPayload = record { username : text; email : text };
+type _AzleResult = variant { Ok : ReviewRecord; Err : text };
+type _AzleResult_1 = variant { Ok : ServiceRecord; Err : text };
+type _AzleResult_2 = variant { Ok : User; Err : text };
+type _AzleResult_3 = variant { Ok : vec ServiceRecord; Err : text };
+type _AzleResult_4 = variant { Ok : vec ReviewRecord; Err : text };
+type _AzleResult_5 = variant { Ok : vec User; Err : text };
+type _AzleResult_6 = variant { Ok : float64; Err : text };
+service : () -> {
+  addReview : (ReviewPayload) -> (_AzleResult);
+  addService : (ServicePayload) -> (_AzleResult_1);
+  createUser : (UserPayload) -> (_AzleResult_2);
+  deleteReview : (text) -> (_AzleResult);
+  deleteService : (text) -> (_AzleResult_1);
+  deleteUser : (text) -> (_AzleResult_2);
+  filterServicesByDateRange : (text, text) -> (_AzleResult_3);
+  filterServicesByProvider : (text) -> (_AzleResult_3);
+  getAllReviews : () -> (_AzleResult_4) query;
+  getAllUsers : () -> (_AzleResult_5) query;
+  getReview : (text) -> (_AzleResult) query;
+  getService : (text) -> (_AzleResult_1) query;
+  getServiceAverageRating : (text) -> (_AzleResult_6) query;
+  getServiceReviews : (text) -> (_AzleResult_4) query;
+  getServices : () -> (_AzleResult_3) query;
+  getUser : (text) -> (_AzleResult_2) query;
+  searchServicesByCategory : (text) -> (_AzleResult_3);
+  updateService : (text, ServicePayload) -> (_AzleResult_1);
+  updateServiceDescription : (text, text) -> (_AzleResult_1);
+  updateServiceLocation : (text, text) -> (_AzleResult_1);
+}

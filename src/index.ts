@@ -1,8 +1,6 @@
-// Importing necessary modules from the 'azle' library and 'uuid' library
-import { $query, $update, Record, StableBTreeMap, Vec, match, Result, nat64, ic, Opt, Principal } from 'azle';
+import { $query, $update, Record, StableBTreeMap, Vec, Result, nat64, Opt } from 'azle';
 import { v4 as uuidv4 } from "uuid";
 
-// Define types for ServiceRecord and ServicePayload
 type ServiceRecord = Record<{
   id: string;
   name: string;
@@ -15,7 +13,7 @@ type ServiceRecord = Record<{
   description: string;
   createdAt: nat64;
   updatedAt: Opt<nat64>;
-}>
+}>;
 
 type ReviewRecord = Record<{
   id: string;
@@ -24,14 +22,14 @@ type ReviewRecord = Record<{
   rating: number;
   comment: string;
   createdAt: nat64;
-}>
+}>;
 
 type ReviewPayload = Record<{
   serviceId: string;
   userId: string;
   rating: number;
   comment: string;
-}>
+}>;
 
 type ServicePayload = Record<{
   name: string;
@@ -42,7 +40,7 @@ type ServicePayload = Record<{
   endTime: string;
   location: string;
   description: string;
-}>
+}>;
 
 type User = Record<{
   id: string;
@@ -52,12 +50,11 @@ type User = Record<{
   updatedAt: Opt<nat64>;
 }>;
 
-// Define the UserPayload type for creating or updating users
 type UserPayload = Record<{
   username: string;
   email: string;
 }>;
-// Create a map to store service records
+
 const serviceStorage = new StableBTreeMap<string, ServiceRecord>(0, 44, 1024);
 const reviewStorage = new StableBTreeMap<string, ReviewRecord>(1, 44, 1024);
 const userStorage = new StableBTreeMap<string, User>(2, 44, 1024);
@@ -118,8 +115,6 @@ $query;
 export function getServices(): Result<Vec<ServiceRecord>, string> {
   return Result.Ok(serviceStorage.values());
 }
-
-// Additional functions for service management can be added here, such as searching by category, filtering by provider, etc.
 
 $update;
 export function searchServicesByCategory(category: string): Result<Vec<ServiceRecord>, string> {
@@ -222,9 +217,34 @@ $query;
 export function getAllUsers(): Result<Vec<User>, string> {
     return Result.Ok(userStorage.values());
 }
-// Mocking the 'crypto' object for testing purposes
+
+
+$update;
+export function updateUser(id: string, payload: UserPayload): Result<User, string> {
+    return match(userStorage.get(id), {
+        Some: (user) => {
+            const updatedUser: User = { ...user, ...payload, updatedAt: Opt.Some(ic.time()) };
+            userStorage.insert(user.id, updatedUser);
+            return Result.Ok<User, string>(updatedUser);
+        },
+        None: () => Result.Err<User, string>(`User with id=${id} not found`)
+    });
+}
+
+$query;
+export function searchUsersByUsername(username: string): Result<Vec<User>, string> {
+    const users = userStorage.values().filter(user => user.username.toLowerCase().includes(username.toLowerCase()));
+    return Result.Ok(users);
+}
+
+$query;
+export function searchUsersByEmail(email: string): Result<Vec<User>, string> {
+    const users = userStorage.values().filter(user => user.email.toLowerCase().includes(email.toLowerCase()));
+    return Result.Ok(users);
+}
+
+
 globalThis.crypto = {
-  // @ts-ignore
   getRandomValues: () => {
     let array = new Uint8Array(32);
 

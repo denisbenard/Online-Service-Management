@@ -1,227 +1,335 @@
-// Importing necessary modules from the 'azle' library and 'uuid' library
-import { $query, $update, Record, StableBTreeMap, Vec, match, Result, nat64, ic, Opt, Principal } from 'azle';
-import { v4 as uuidv4 } from "uuid";
+// Import necessary modules
+import {
+    $query,
+    $update,
+    Record,
+    StableBTreeMap,
+    Vec,
+    match,
+    Result,
+    nat64,
+    ic,
+    Opt,
+    Principal
+} from 'azle';
+import { v4 as uuidv4 } from 'uuid';
 
 // Define types for ServiceRecord and ServicePayload
 type ServiceRecord = Record<{
-  id: string;
-  name: string;
-  category: string;
-  provider: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location: string;
-  description: string;
-  createdAt: nat64;
-  updatedAt: Opt<nat64>;
-}>
-
-type ReviewRecord = Record<{
-  id: string;
-  serviceId: string;
-  userId: string;
-  rating: number;
-  comment: string;
-  createdAt: nat64;
-}>
-
-type ReviewPayload = Record<{
-  serviceId: string;
-  userId: string;
-  rating: number;
-  comment: string;
-}>
+    id: string;
+    name: string;
+    category: string;
+    provider: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    location: string;
+    description: string;
+    createdAt: nat64;
+    updatedAt: Opt<nat64>;
+}>;
 
 type ServicePayload = Record<{
-  name: string;
-  category: string;
-  provider: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  location: string;
-  description: string;
-}>
-
-type User = Record<{
-  id: string;
-  username: string;
-  email: string;
-  createdAt: nat64;
-  updatedAt: Opt<nat64>;
+    name: string;
+    category: string;
+    provider: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    location: string;
+    description: string;
 }>;
 
-// Define the UserPayload type for creating or updating users
-type UserPayload = Record<{
-  username: string;
-  email: string;
-}>;
 // Create a map to store service records
 const serviceStorage = new StableBTreeMap<string, ServiceRecord>(0, 44, 1024);
-const reviewStorage = new StableBTreeMap<string, ReviewRecord>(1, 44, 1024);
-const userStorage = new StableBTreeMap<string, User>(2, 44, 1024);
 
-$update;
-export function addService(payload: ServicePayload): Result<ServiceRecord, string> {
-  const record: ServiceRecord = { id: uuidv4(), createdAt: ic.time(), updatedAt: Opt.None, ...payload };
-  serviceStorage.insert(record.id, record);
-  return Result.Ok(record);
-}
-
-$query;
-export function getServiceReviews(serviceId: string): Result<Vec<ReviewRecord>, string> {
-    const reviews = reviewStorage.values().filter(review => review.serviceId === serviceId);
-    return Result.Ok(reviews);
-}
-
-$query;
-export function getServiceAverageRating(serviceId: string): Result<number, string> {
-    const reviews = reviewStorage.values().filter(review => review.serviceId === serviceId);
-    if (reviews.length === 0) {
-        return Result.Err("No reviews found for the service");
+// Add a new service
+$update
+export function addService(payload: ServicePayload, caller: Principal): Result<ServiceRecord, string> {
+    // Validate input data
+    if (!payload.name || !payload.category || !payload.provider || !payload.date || !payload.startTime || !payload.endTime || !payload.location || !payload.description) {
+        return Result.Err<ServiceRecord, string>('Missing or invalid input data');
     }
-    const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-    const averageRating = totalRating / reviews.length;
-    return Result.Ok(averageRating);
+
+    // Create a new service record
+    const record: ServiceRecord = {
+        id: uuidv4(),
+        createdAt: ic.time(),
+        updatedAt: Opt.None,
+        ...payload
+    };
+
+    // Insert the record into the storage
+    serviceStorage.insert(record.id, record);
+
+    return Result.Ok(record);
 }
 
-$update;
-export function updateService(id: string, payload: ServicePayload): Result<ServiceRecord, string> {
-  return match(serviceStorage.get(id), {
-      Some: (record) => {
-          const updatedRecord: ServiceRecord = {...record, ...payload, updatedAt: Opt.Some(ic.time())};
-          serviceStorage.insert(record.id, updatedRecord);
-          return Result.Ok<ServiceRecord, string>(updatedRecord);
-      },
-      None: () => Result.Err<ServiceRecord, string>(`Service with id=${id} not found`)
-  });
+// Update an existing service
+$update
+export function updateService(id: string, payload: ServicePayload, caller: Principal): Result<ServiceRecord, string> {
+    // Retrieve the service record
+    const existingRecord = serviceStorage.get(id);
+    if (!existingRecord) {
+        return Result.Err<ServiceRecord, string>(`Service with id=${id} not found`);
+    }
+
+    // Validate caller authorization
+    if (existingRecord.provider !== caller.toString()) {
+        return Result.Err<ServiceRecord, string>('You are not authorized to update this service');
+    }
+
+    // Update the service record
+    const updatedRecord: ServiceRecord = {
+        ...existingRecord,
+        ...payload,
+        updatedAt: Opt.Some(ic.time())
+    };
+    serviceStorage.insert(id, updatedRecord);
+
+    return Result.Ok(updatedRecord);
 }
 
-$update;
-export function deleteService(id: string): Result<ServiceRecord, string> {
-  return match(serviceStorage.remove(id), {
-      Some: (deletedRecord) => Result.Ok<ServiceRecord, string>(deletedRecord),
-      None: () => Result.Err<ServiceRecord, string>(`Service with id=${id} not found`)
-  });
+// Delete an existing service
+$update
+export function deleteService(id: string, caller: Principal): Result<ServiceRecord, string> {
+    // Retrieve the service record
+    const existingRecord = serviceStorage.get(id);
+    if (!existingRecord) {
+        return Result.Err<ServiceRecord, string>(`Service with id=${id} not found`);
+    }
+
+    // Validate caller authorization
+    if (existingRecord.provider !== caller.toString()) {
+        return Result.Err<ServiceRecord, string>('You are not authorized to delete this service');
+    }
+
+    // Remove the service record
+    serviceStorage.remove(id);
+
+    return Result.Ok(existingRecord);
 }
 
-$query;
+// Retrieve a service by its ID
+$query
 export function getService(id: string): Result<ServiceRecord, string> {
-  return match(serviceStorage.get(id), {
-      Some: (record) => Result.Ok<ServiceRecord, string>(record),
-      None: () => Result.Err<ServiceRecord, string>(`Service with id=${id} not found`)
-  });
+    // Retrieve the service record
+    const existingRecord = serviceStorage.get(id);
+    if (!existingRecord) {
+        return Result.Err<ServiceRecord, string>(`Service with id=${id} not found`);
+    }
+
+    return Result.Ok(existingRecord);
 }
 
-$query;
+// Retrieve all services
+$query
 export function getServices(): Result<Vec<ServiceRecord>, string> {
-  return Result.Ok(serviceStorage.values());
+    return Result.Ok(serviceStorage.values());
 }
 
-// Additional functions for service management can be added here, such as searching by category, filtering by provider, etc.
-
-$update;
+// Search services by category
+$query
 export function searchServicesByCategory(category: string): Result<Vec<ServiceRecord>, string> {
-    const records = serviceStorage.values();
-    const filteredServices = records.filter(service => service.category.toLowerCase() === category.toLowerCase());
+    // Filter services by category
+    const filteredServices = serviceStorage.values().filter(service => service.category.toLowerCase() === category.toLowerCase());
     return Result.Ok(filteredServices);
 }
 
-$update;
+// Filter services by provider
+$query
 export function filterServicesByProvider(provider: string): Result<Vec<ServiceRecord>, string> {
-    const records = serviceStorage.values();
-    const filteredServices = records.filter(service => service.provider.toLowerCase() === provider.toLowerCase());
+    // Filter services by provider
+    const filteredServices = serviceStorage.values().filter(service => service.provider.toLowerCase() === provider.toLowerCase());
     return Result.Ok(filteredServices);
 }
 
-$update;
+// Filter services by date range
+$query
 export function filterServicesByDateRange(startDate: string, endDate: string): Result<Vec<ServiceRecord>, string> {
-    const records = serviceStorage.values();
-    const filteredServices = records.filter(service => service.date >= startDate && service.date <= endDate);
+    // Filter services by date range
+    const filteredServices = serviceStorage.values().filter(service => service.date >= startDate && service.date <= endDate);
     return Result.Ok(filteredServices);
 }
 
-$update;
-export function updateServiceLocation(id: string, location: string): Result<ServiceRecord, string> {
-    return match(serviceStorage.get(id), {
-        Some: (record) => {
-            const updatedRecord: ServiceRecord = {...record, location, updatedAt: Opt.Some(ic.time())};
-            serviceStorage.insert(record.id, updatedRecord);
-            return Result.Ok<ServiceRecord, string>(updatedRecord);
-        },
-        None: () => Result.Err<ServiceRecord, string>(`Service with id=${id} not found`)
-    });
+// Update service location
+$update
+export function updateServiceLocation(id: string, location: string, caller: Principal): Result<ServiceRecord, string> {
+    // Retrieve the service record
+    const existingRecord = serviceStorage.get(id);
+    if (!existingRecord) {
+        return Result.Err<ServiceRecord, string>(`Service with id=${id} not found`);
+    }
+
+    // Validate caller authorization
+    if (existingRecord.provider !== caller.toString()) {
+        return Result.Err<ServiceRecord, string>('You are not authorized to update this service');
+    }
+
+    // Update the service location
+    const updatedRecord: ServiceRecord = {
+        ...existingRecord,
+        location,
+        updatedAt: Opt.Some(ic.time())
+    };
+    serviceStorage.insert(id, updatedRecord);
+
+    return Result.Ok(updatedRecord);
 }
 
-$update;
-export function updateServiceDescription(id: string, description: string): Result<ServiceRecord, string> {
-    return match(serviceStorage.get(id), {
-        Some: (record) => {
-            const updatedRecord: ServiceRecord = {...record, description, updatedAt: Opt.Some(ic.time())};
-            serviceStorage.insert(record.id, updatedRecord);
-            return Result.Ok<ServiceRecord, string>(updatedRecord);
-        },
-        None: () => Result.Err<ServiceRecord, string>(`Service with id=${id} not found`)
-    });
-}
+// Update service description
+$update
+export function updateServiceDescription(id: string, description: string, caller: Principal): Result<ServiceRecord, string> {
+    // Retrieve the service record
+    const existingRecord = serviceStorage.get(id);
+    if (!existingRecord) {
+        return Result.Err<ServiceRecord, string>(`Service with id=${id} not found`);
+    }
 
-$update;
-export function addReview(payload: ReviewPayload): Result<ReviewRecord, string> {
-    const review: ReviewRecord = { id: uuidv4(), createdAt: ic.time(), ...payload };
+    // Validate caller authorization
+    if (existingRecord.provider !== caller.toString()) {
+        return Result.Err<ServiceRecord, string>('You are not authorized to update this service');
+    }
+
+    // Update the service description
+    const updatedRecord: ServiceRecord = {
+        ...existingRecord,
+        description,
+        updatedAt: Opt.Some(ic.time())
+    };
+    serviceStorage.insert(id, updatedRecord);
+
+    return Result.Ok(updatedRecord);
+}
+// Add a review for a service
+$update
+export function addReview(payload: ReviewPayload, caller: Principal): Result<ReviewRecord, string> {
+    // Validate input data
+    if (!payload.serviceId || !payload.userId || isNaN(payload.rating) || payload.rating < 0 || payload.rating > 5 || !payload.comment) {
+        return Result.Err<ReviewRecord, string>('Invalid review data');
+    }
+
+    // Check if the service exists
+    const serviceExists = serviceStorage.get(payload.serviceId);
+    if (!serviceExists) {
+        return Result.Err<ReviewRecord, string>('Service does not exist');
+    }
+
+    // Create the review record
+    const review: ReviewRecord = {
+        id: uuidv4(),
+        createdAt: ic.time(),
+        ...payload
+    };
+
+    // Insert the review into the storage
     reviewStorage.insert(review.id, review);
+
     return Result.Ok(review);
 }
 
-$update;
-export function deleteReview(id: string): Result<ReviewRecord, string> {
-    return match(reviewStorage.remove(id), {
-        Some: (deletedReview) => Result.Ok<ReviewRecord, string>(deletedReview),
-        None: () => Result.Err<ReviewRecord, string>(`Review with id=${id} not found`)
-    });
+// Delete a review
+$update
+export function deleteReview(id: string, caller: Principal): Result<ReviewRecord, string> {
+    // Retrieve the review record
+    const existingReview = reviewStorage.get(id);
+    if (!existingReview) {
+        return Result.Err<ReviewRecord, string>(`Review with id=${id} not found`);
+    }
+
+    // Check if the caller is authorized to delete the review
+    if (existingReview.userId !== caller.toString()) {
+        return Result.Err<ReviewRecord, string>('You are not authorized to delete this review');
+    }
+
+    // Remove the review from storage
+    reviewStorage.remove(id);
+
+    return Result.Ok(existingReview);
 }
 
-$query;
+// Get a review by ID
+$query
 export function getReview(id: string): Result<ReviewRecord, string> {
-    return match(reviewStorage.get(id), {
-        Some: (review) => Result.Ok<ReviewRecord, string>(review),
-        None: () => Result.Err<ReviewRecord, string>(`Review with id=${id} not found`)
-    });
+    // Retrieve the review record
+    const existingReview = reviewStorage.get(id);
+    if (!existingReview) {
+        return Result.Err<ReviewRecord, string>(`Review with id=${id} not found`);
+    }
+
+    return Result.Ok(existingReview);
 }
 
-$query;
+// Get all reviews
+$query
 export function getAllReviews(): Result<Vec<ReviewRecord>, string> {
-    return Result.Ok(reviewStorage.values());
+    // Retrieve all review records
+    const reviews = reviewStorage.values();
+    return Result.Ok(reviews);
 }
 
-$update;
+// Create a new user
+$update
 export function createUser(payload: UserPayload): Result<User, string> {
-    const id = uuidv4();
-    const user: User = { id, ...payload, createdAt: ic.time(), updatedAt: Opt.None };
-    userStorage.insert(id, user);
+    // Validate input data
+    if (!payload.username || !payload.email) {
+        return Result.Err<User, string>('Missing username or email');
+    }
+
+    // Create the user record
+    const user: User = {
+        id: uuidv4(),
+        createdAt: ic.time(),
+        updatedAt: Opt.None,
+        ...payload
+    };
+
+    // Insert the user into storage
+    userStorage.insert(user.id, user);
+
     return Result.Ok(user);
 }
 
-$update;
-export function deleteUser(id: string): Result<User, string> {
-    return match(userStorage.remove(id), {
-        Some: (deletedUser) => Result.Ok<User, string>(deletedUser),
-        None: () => Result.Err<User, string>(`User with id=${id} not found`)
-    });
+// Delete a user
+$update
+export function deleteUser(id: string, caller: Principal): Result<User, string> {
+    // Retrieve the user record
+    const existingUser = userStorage.get(id);
+    if (!existingUser) {
+        return Result.Err<User, string>(`User with id=${id} not found`);
+    }
+
+    // Check if the caller is authorized to delete the user
+    if (existingUser.id !== caller.toString()) {
+        return Result.Err<User, string>('You are not authorized to delete this user');
+    }
+
+    // Remove the user from storage
+    userStorage.remove(id);
+
+    return Result.Ok(existingUser);
 }
 
-$query;
+// Get a user by ID
+$query
 export function getUser(id: string): Result<User, string> {
-    return match(userStorage.get(id), {
-        Some: (user) => Result.Ok<User, string>(user),
-        None: () => Result.Err<User, string>(`User with id=${id} not found`)
-    });
+    // Retrieve the user record
+    const existingUser = userStorage.get(id);
+    if (!existingUser) {
+        return Result.Err<User, string>(`User with id=${id} not found`);
+    }
+
+    return Result.Ok(existingUser);
 }
 
-$query;
+// Get all users
+$query
 export function getAllUsers(): Result<Vec<User>, string> {
-    return Result.Ok(userStorage.values());
+    // Retrieve all user records
+    const users = userStorage.values();
+    return Result.Ok(users);
 }
+
 // Mocking the 'crypto' object for testing purposes
 globalThis.crypto = {
   // @ts-ignore
